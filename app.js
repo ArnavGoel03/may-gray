@@ -339,7 +339,7 @@ function render() {
   d3.select("#line .now").attr("x1", lx(hour)).attr("x2", lx(hour));
   const last = data.hours.length - 1;
   // End labels sit at the end of their line; when the two lines end close together the labels are pushed apart.
-  const MIN_GAP = 14;
+  const MIN_GAP = 17;  // one label line (12px text is about 14 units tall) plus breathing room on any font
   let ySel = ly(sel[last]), yRef = ly(ref[last]);
   if (Math.abs(ySel - yRef) < MIN_GAP) {
     const mid = (ySel + yRef) / 2, up = ySel <= yRef ? -1 : 1;
