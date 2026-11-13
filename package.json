@@ -1,0 +1,14 @@
+{
+  "name": "may-gray",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@12.18.0",
+  "scripts": {
+    "data": "uv run --with numpy python scripts/export_data.py",
+    "check": "node --check app.js && node --check tests/browser.mjs",
+    "test": "node tests/browser.mjs"
+  },
+  "devDependencies": {
+    "playwright": "1.65.0"
+  }
+}

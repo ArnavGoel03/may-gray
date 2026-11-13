@@ -1,0 +1,24 @@
+# Runs the browser test against the published page after every GitHub Pages build,
+# so a broken deploy is caught by a machine.
+name: Live page test
+on:
+  page_build:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  live:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4  # version comes from packageManager in package.json
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm exec playwright install --with-deps chromium
+      - run: pnpm test
+        env:
+          MAY_GRAY_URL: https://arnavgoel03.github.io/may-gray/

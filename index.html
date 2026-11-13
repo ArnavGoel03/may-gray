@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>When Does the May Gray Burn Off?</title>
+  <meta name="description" content="An explorable explanation of when and where San Diego's May Gray clears, from three years of GOES-18 satellite cloud masks." />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <header>
+    <p class="tag">DSC 106 Final Project, initial prototype</p>
+    <h1>When Does the May Gray Burn Off?</h1>
+    <p class="lede">In May and June, San Diego mornings usually start under a low gray cloud deck, which people call May Gray and June Gloom. How long it lasts depends on where you are standing.</p>
+    <p class="howto" id="howto" hidden></p>  <!-- numbers filled from the data once it has loaded -->
+    <p class="jump"><a href="#w0">Jump to the prototype write-up</a></p>
+    <p class="status" id="status" role="status">Loading the cloud data.</p>
+    <noscript><p class="status error">This page draws its map and chart with JavaScript, which is turned off in this browser.</p></noscript>
+  </header>
+
+  <!-- the hour row stays pinned while scrolling, so the map can be watched while the slider moves -->
+  <section class="timebar" aria-label="Hour and year">
+    <label class="hour-ctl"><span class="vh">Hour of day </span><output id="hour-out" for="hour"></output>
+      <input type="range" id="hour" min="0" max="8" step="1" value="0" />
+    </label>
+    <div class="hour-ticks" id="hour-ticks" aria-hidden="true"></div>  <!-- tick labels under the slider, filled by app.js -->
+    <button id="play" type="button">Play</button>
+    <fieldset class="years">
+      <legend class="vh">Years</legend>
+      <div class="seg" id="year-radios"></div>  <!-- one option per year in the data, filled by app.js -->
+    </fieldset>
+  </section>
+
+  <main>
+    <section class="step" aria-labelledby="s1">
+      <h2 id="s1"><span class="num">1</span> Watch the gray pull back to the coast</h2>
+      <div class="views">
+        <figure class="map-wrap">
+          <svg id="map" role="group" aria-label="Map of San Diego County showing the share of days each place was cloudy at the selected hour. The named places are buttons that draw that place in the chart."></svg>
+          <div class="legend">
+            <svg id="legend" aria-hidden="true"></svg>
+            <span class="key"><i class="swatch masked"></i> not counted (reads far cloudier than its neighbours)</span>
+          </div>
+          <figcaption id="map-caption"></figcaption>
+        </figure>
+        <figure class="line-wrap">
+          <h3 id="line-title"></h3>
+          <svg id="line" role="img" aria-label="Share of days cloudy at each hour for the selected place, next to the coastal average. The caption below gives the reading at the selected hour."></svg>
+          <figcaption id="line-caption" aria-live="polite"></figcaption>
+        </figure>
+      </div>
+    </section>
+
+    <section class="step planned" aria-labelledby="s2">
+      <h2 id="s2"><span class="num">2</span> Drag a line inland</h2>
+      <p>Planned for the final version. The reader will drag a line from the beach towards the mountains and see the chance of a gray morning drop along it, hour by hour.</p>
+    </section>
+    <section class="step planned" aria-labelledby="s3">
+      <h2 id="s3"><span class="num">3</span> Three different years</h2>
+      <p>Planned for the final version. The year buttons above already switch the map and the chart; this section will put the three years side by side, so that the average does not hide how much they differ.</p>
+    </section>
+    <section class="step planned" aria-labelledby="s4">
+      <h2 id="s4"><span class="num">4</span> Why it happens</h2>
+      <p>Planned for the final version. Short annotations will explain the marine layer: cool ocean air trapped under warmer air, which burns off as the land heats up.</p>
+    </section>
+
+    <section class="writeup" aria-labelledby="w0">
+      <h2 id="w0">Prototype write-up</h2>
+      <h3 id="w1">What have you done so far?</h3>
+      <p id="done">So far, I have downloaded the GOES-18 clear sky mask for every day of May and June in 2023, 2024 and 2025, which comes to 183 days, and put the first scan of each hour between 8 AM and 4 PM on a 0.02 degree grid over San Diego County. From that I worked out, for each grid cell and each hour, the share of days on which it was cloudy, and I marked 21 cells that read far cloudier than everything around them, as they point to the surface and not the weather. The main visualization on this page is a map of that share, and the reader can drag the hour slider or press Play to watch the gray pull back towards the coast through the day. Clicking a place or any cell on the map draws its curve across the day next to the coastal average, whilst the year buttons switch the whole page between the three years and the pooled average. I have also laid out the sections the final page will have, so the parts that are still missing show up as placeholders on the page.</p>
+      <h3 id="w2">What will be the most challenging part of your project to design, and why?</h3>
+      <p id="hard">The most challenging part to design will be the line that the reader drags inland, since it has to work as an interaction and also carry the main point of the story. A straight line from the beach to the mountains crosses the open ocean, the shoreline and several valleys, so the chart it draws can look jumpy, and I have to decide how much to smooth it without hiding what the data shows. It also has to stay linked to the map and the hour slider, which means three views changing at once, and that can easily confuse a reader instead of helping. Another difficulty is that the clear sky mask only says cloudy or clear, hence I cannot show the marine layer itself and will have to explain it through annotations that do not claim more than the data supports. Three years is also a small sample and each year has only 61 days, so showing how much the years differ without making the noise look like a finding will take some care.</p>
+    </section>
+  </main>
+
+  <div id="tip" aria-hidden="true" hidden></div>  <!-- pointer-only detail; the chart caption carries the same reading for everyone -->
+  <footer>
+    <p>Yash Goel, DSC 106, Fall 2026.</p>
+    <p id="source"></p>
+    <p><a href="https://github.com/ArnavGoel03/may-gray">Code and data on GitHub</a></p>
+  </footer>
+  <script src="vendor/d3.v7.9.2.min.js"></script>
+  <script type="module" src="app.js"></script>
+</body>
+</html>
