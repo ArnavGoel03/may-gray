@@ -17,6 +17,7 @@ const CLEAR_AT = 50;      // a place counts as usually cleared once fewer than h
 const PLAY_MS = 900;      // one hour per step while playing: slow enough to read the map, fast enough to feel like motion
 const MAP_W = 1010;       // map drawing width in SVG units: 10 units per grid cell
 const MID_LAT = 33.05;    // middle of the grid; a degree of longitude is cos(latitude) as wide as a degree of latitude
+const HIT_R = 22;        // radius of the invisible press target around a place dot, in map units (a finger-sized target on a phone)
 const BOX = 1;            // a picked place is averaged over the cells within BOX of it (3 x 3), to smooth single-cell noise
 // The right margin holds the end labels; 118 fits the longest one ("UC San Diego") in bold at phone text size.
 const LINE = { w: 460, h: 330, top: 14, right: 118, bottom: 34, left: 48 };
@@ -94,14 +95,16 @@ function coastCurve(group) {
   const curves = COASTAL.map((n) => curve(group, at(n).i, at(n).j));
   return data.hours.map((_, h) => d3.mean(curves, (c) => c[h]));
 }
-/** When a curve first drops under CLEAR_AT, in words. Judged on the whole percent the page shows, so a reading
- *  of 49.9 that is printed as 50% is not also called cleared. */
+/** When a curve drops under CLEAR_AT and stays there, in words. Judged on the whole percent the page shows, so a
+ *  reading of 49.9 that is printed as 50% is not also called cleared. A dip that climbs back to half or more does
+ *  not count: clearing is the hour after the last gray one. */
 function clearing(c) {
   const first = data.hours[0], last = data.hours[data.hours.length - 1];
+  const gray = (v) => Math.round(v) >= CLEAR_AT;
   if (Number.isNaN(c[0])) return `has no reading at ${hourLabel(first)}`;
-  if (!(Math.round(c[0]) >= CLEAR_AT)) return `is not usually gray even at ${hourLabel(first)}`;
-  const k = c.findIndex((v) => Math.round(v) < CLEAR_AT);
-  return k < 0 ? `is still gray on most days at ${hourLabel(last)}` : `usually clears by ${hourLabel(data.hours[k])}`;
+  if (!gray(c[0])) return `is not usually gray even at ${hourLabel(first)}`;
+  const k = c.findLastIndex(gray);
+  return k === c.length - 1 ? `is still gray on most days at ${hourLabel(last)}` : `usually clears by ${hourLabel(data.hours[k + 1])}`;
 }
 function groupLabel(group) {
   const [a, b] = d3.extent(data.years);
@@ -187,7 +190,8 @@ function buildMap(coast) {
     .on("keydown", (event, n) => {
       if (event.key === "Enter" || event.key === " ") { event.preventDefault(); pickPlace(n); }
     });
-  places.append("circle").attr("r", 5.5);
+  places.append("circle").attr("class", "hit").attr("r", HIT_R);
+  places.append("circle").attr("class", "dot").attr("r", 5.5);
   places.append("text").attr("dy", "0.35em").attr("x", 10).text((n) => n);
 
   svg.on("pointermove", (event) => { if (event.pointerType !== "touch") trackTip(event); })
@@ -323,6 +327,7 @@ function render() {
     .attr("x", x0(j0)).attr("y", y0(i1)).attr("width", (j1 - j0 + 1) * cellW).attr("height", (i1 - i0 + 1) * cellH);
   d3.selectAll("#map .place").classed("on", (n) => n === pick.name).attr("aria-pressed", (n) => n === pick.name);
   $("map-caption").textContent = `Share of days each place was cloudy at ${hourLabel(h)}, ${groupLabel(group)}. `
+    + `The ocean cells are real readings: the cloud deck sits over the water for most of the day. `
     + `The orange box marks the area drawn in the chart.`
     + (group === ALL ? "" : " A single year is a small sample, so single cells are noisier than in the average.");
 

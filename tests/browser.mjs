@@ -57,6 +57,7 @@ try {
   check("masked count", (await page.locator("#map .cells rect.masked").count()) === EXPECT.masked);
   const howto = await page.locator("#howto").textContent();
   check("intro numbers", howto.includes(`8 AM on ${EXPECT.coast8}`) && howto.includes(`2 PM on ${EXPECT.coast2}`), howto);
+  check("All years is selected at the start", await page.locator('#year-radios input[value="all"]').isChecked());
   check("hour readout starts at 8 AM", (await page.locator("#hour-out").textContent()) === "8 AM");
   const cap0 = await page.locator("#line-caption").textContent();
   check("default place reading", cap0.includes(`El Cajon was cloudy on ${EXPECT.elCajon8}`) && cap0.includes(`${EXPECT.coast8} at the coast`), cap0);
@@ -87,6 +88,7 @@ try {
   await page.locator("#play").click();
   await page.waitForFunction(() => document.getElementById("play").textContent === "Play", null, { timeout: 4000 });
   check("play stops at the last hour", (await page.locator("#hour-out").textContent()) === "4 PM");
+  check("caption is announced again after play", (await page.locator("#line-caption").getAttribute("aria-live")) === "polite");
   await page.locator("#play").click();
   check("play from the end restarts at the first hour", (await page.locator("#hour-out").textContent()) === "8 AM");
   await page.locator("#play").click();
@@ -126,6 +128,9 @@ try {
   await page.locator("#hour").fill("4");
   const ucsdNoon = await page.locator("#line-caption").textContent();
   check("UC San Diego at noon", ucsdNoon.includes("cloudy on 50% of days") && ucsdNoon.includes("UC San Diego usually clears by 1 PM"), ucsdNoon);
+  // UC San Diego ends within a point of the coast, so the two end labels have to be pushed apart
+  const ends = await page.$$eval("#line .end", (ts) => ts.map((t) => t.getBoundingClientRect()).map((r) => [r.top, r.bottom]));
+  check("chart end labels do not overlap", ends[0][1] <= ends[1][0] || ends[1][1] <= ends[0][0], JSON.stringify(ends));
   await page.locator("#hour").fill("0");
 
   // Interaction 5: the year buttons switch the data
