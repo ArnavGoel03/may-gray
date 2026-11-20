@@ -15,7 +15,7 @@
     <p class="howto" id="howto" hidden></p>  <!-- numbers filled from the data once it has loaded -->
     <p class="jump"><a href="#w0">Jump to the prototype write-up</a></p>
     <p class="status" id="status" role="status">Loading the cloud data.</p>
-    <noscript><style>#status { display: none; }</style><p class="status error">This page draws its map and chart with JavaScript, which is turned off in this browser.</p></noscript>
+    <noscript><style>#status, .pending { display: none; }</style><p class="status error">This page draws its map and chart with JavaScript, which is turned off in this browser.</p></noscript>
   </header>
 
   <!-- the hour row stays pinned while scrolling, so the map can be watched while the slider moves -->
@@ -91,6 +91,7 @@
       const s = document.getElementById("status");
       s.textContent = "The page could not start. Open it from https://arnavgoel03.github.io/may-gray/ or reload to try again.";
       s.classList.add("error");
+      for (const el of document.querySelectorAll(".pending")) el.hidden = true;  // no blank space where the controls would be
     });
   </script>
 </body>

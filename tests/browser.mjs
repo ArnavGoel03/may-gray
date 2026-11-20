@@ -233,8 +233,36 @@ try {
   const ec = await phone.locator('#map .place[data-name="El Cajon"] .dot').boundingBox();
   const above = await phone.evaluate(([x, y]) => document.elementFromPoint(x, y)?.closest(".place")?.dataset.name, [ec.x + ec.width / 2, ec.y + ec.height / 2 - 11]);
   check("a tap just above El Cajon picks El Cajon", above === "El Cajon", String(above));
+  // a jump or focus scroll stops below the pinned bar, which is taller on a phone
+  await phone.locator(".jump a").click();
+  await phone.waitForTimeout(400);
+  const under = await phone.evaluate(() => document.getElementById("w0").getBoundingClientRect().top - document.getElementById("timebar").getBoundingClientRect().bottom);
+  check("the write-up heading is not under the pinned bar", under >= 0, `${under}px`);
   await phone.screenshot({ path: join(SHOTS, "phone.png"), fullPage: true });
   await phone.close();
+
+  // Chromium's tap adjustment snaps to the nearest target; a long label must not be one on a touch screen
+  const pixel = await browser.newPage({ viewport: { width: 412, height: 915 }, hasTouch: true, isMobile: true });
+  await pixel.goto(baseURL, { waitUntil: "networkidle" });
+  await pixel.waitForSelector("#map .cells rect[fill]", { timeout: 15000 });
+  await pixel.locator('#map .place[data-name="El Cajon"]').scrollIntoViewIfNeeded();
+  for (const name of ["El Cajon", "Ramona"]) {
+    const d = await pixel.locator(`#map .place[data-name="${name}"] .dot`).boundingBox();
+    await pixel.touchscreen.tap(d.x + d.width / 2, d.y + d.height / 2 - 11);
+    check(`a tap just above ${name} picks it`, (await pixel.locator("#line-title").textContent()) === `${name} against the coast`, await pixel.locator("#line-title").textContent());
+  }
+  await pixel.close();
+
+  // If the script never runs, no blank space is kept for controls that will never come
+  for (const [name, opts, block] of [["JavaScript off", { javaScriptEnabled: false }, null], ["app.js blocked", {}, "**/app.js"]]) {
+    const dead = await browser.newPage(opts);
+    if (block) await dead.route(block, (r) => r.abort());
+    await dead.goto(baseURL, { waitUntil: "load" });
+    await dead.waitForTimeout(200);
+    const shown = await dead.$$eval(".pending", (els) => els.filter((e) => getComputedStyle(e).display !== "none").length);
+    check(`no blank space kept with ${name}`, shown === 0, `${shown}`);
+    await dead.close();
+  }
 
   // 320 px (a small phone, or 400% zoom): nothing sideways, years all inside the bar, hour labels apart
   const tiny = await browser.newPage({ viewport: { width: 320, height: 568 } });

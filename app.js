@@ -22,8 +22,9 @@ const HIT_CSS = 14;       // ...but never under 14 CSS px on screen (a 28 px tar
 const HIT_MAX = 50;       // ...and never over 50 map units, half the gap between the closest two places (UC San Diego, Downtown)
 const DOT_R = 5.5, DOT_CSS = 3.5;  // dot radius in map units, and the smallest it may look on screen, in CSS px
 const LABEL_GAP = 4.5;    // map units between a place dot's edge and its label
-const DRAG_PX = 6;
-const BAR_MAX = 0.3;      // the pinned hour bar may cover at most this share of the window height, else it scrolls away        // a press that moves further than this before release is a drag, not a pick
+const DRAG_PX = 6;        // a press that moves further than this before release is a drag, not a pick
+const BAR_MAX = 0.3;      // the pinned hour bar may cover at most this share of the window height, else it scrolls away
+const BAR_GAP = 8;        // px kept between the pinned bar and whatever a focus or jump scrolls to under it
 // A picked place is averaged over the cells within BOX of it (3 x 3). The 0.02 degree grid oversamples the native
 // cloud mask pixel (about 4 to 5 km here, so neighbouring cells often repeat one pixel); the box covers about one to
 // two real pixels each way, which steadies the reading against a single pixel without averaging across a valley.
@@ -79,7 +80,12 @@ async function init() {
   // Shown only once everything is built, so a failure above leaves no half-built controls on screen.
   for (const id of ["timebar", "views"]) $(id).classList.remove("pending");
   // The bar's height depends on width, zoom and font size, so the pin is decided on its measured height.
-  const pinBar = () => document.documentElement.classList.toggle("bar-static", $("timebar").offsetHeight > BAR_MAX * innerHeight);
+  // While pinned, focus and jump-link scrolls stop below the bar's real bottom edge, not a fixed guess.
+  const pinBar = () => {
+    const bar = $("timebar"), root = document.documentElement;
+    const pinned = !root.classList.toggle("bar-static", bar.offsetHeight > BAR_MAX * innerHeight);
+    root.style.setProperty("--bar-clear", pinned ? `${parseFloat(getComputedStyle(bar).top) + bar.offsetHeight + BAR_GAP}px` : "");
+  };
   new ResizeObserver(pinBar).observe($("timebar"));
   addEventListener("resize", pinBar);
   $("status").hidden = true;
@@ -169,6 +175,7 @@ function fitTicks(ticks) {
     const shown = nodes.filter((el) => el.style.visibility !== "hidden").map(textBox);
     if (shown.every((r, k) => k === 0 || r.left >= shown[k - 1].right + TICK_GAP)) return;
   }
+  ticks.style("visibility", (_, k) => (k === 0 ? null : "hidden"));  // even two do not fit: the readout above still names the hour
 }
 function setHour(h) {
   state.hour = h;
@@ -397,7 +404,6 @@ function render() {
   d3.selectAll("#map .picked, #map .picked-halo")
     .attr("x", x0(j0)).attr("y", y0(i1)).attr("width", (j1 - j0 + 1) * cellW).attr("height", (i1 - i0 + 1) * cellH);
   d3.selectAll("#map .place").classed("on", (n) => n === pick.name).attr("aria-pressed", (n) => n === pick.name);
-  d3.selectAll("#map .place-label").classed("on", (n) => n === pick.name);
   $("map-caption").textContent = `Share of days each place was cloudy at ${hourLabel(h)}, ${groupLabel(group)}. `
     + `The ocean cells are real readings: the cloud deck sits over the water for most of the day. `
     + `The orange box marks the area drawn in the chart.`

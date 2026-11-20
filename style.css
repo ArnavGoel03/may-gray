@@ -41,8 +41,8 @@
   --ease: cubic-bezier(0.2, 0.7, 0.2, 1);
 }
 * { box-sizing: border-box; }
-[hidden] { display: none !important; }
-.pending { visibility: hidden; }  /* laid out but not shown or focusable until the data is in */  /* the bar and the views are display: grid, which would otherwise beat hidden */
+[hidden] { display: none !important; }  /* the bar and the views are display: grid, which would otherwise beat hidden */
+.pending { visibility: hidden; }  /* laid out but not shown or focusable until the data is in */
 html { -webkit-text-size-adjust: 100%; scroll-padding-top: var(--bar-clear); }
 body {
   margin: 0 auto; max-width: var(--page); padding: 28px 24px 24px;
@@ -153,6 +153,9 @@ svg { display: block; width: 100%; height: auto; }
 #map .place { cursor: pointer; }
 #map .place .hit { fill: transparent; }
 #map .place .dot { fill: var(--panel); stroke: var(--ink); stroke-width: 1.6; }
+/* On a touch screen the label is not a target: the browser's tap adjustment would snap a tap meant for a nearby dot
+   onto a long neighbouring label. The dots' own targets are finger-sized there. */
+@media (pointer: coarse) { #map .place-label { pointer-events: none; } }
 #map .place-label {
   cursor: pointer; font: 600 15px var(--font-sans); fill: var(--ink); paint-order: stroke; stroke: var(--halo); stroke-width: 4;
   stroke-linejoin: round;
@@ -174,7 +177,7 @@ svg { display: block; width: 100%; height: auto; }
 /* Space is kept for both charts before the data arrives, so the page does not jump when they are drawn. The ratios are
    the viewBoxes app.js draws: the map is MAP_W (1010) wide and 56 rows of 10 / cos(33.05 deg) units tall, the chart
    is LINE.w x LINE.h. */
-#map { aspect-ratio: 1010 / 668.3; }
+#map { aspect-ratio: 1010 / 668.1; }
 /* overflow: a large minimum font size can push an axis label past the chart's edge, into the figure padding */
 #line { aspect-ratio: 460 / 330; overflow: visible; cursor: pointer; touch-action: manipulation; }
 #line text { font: 12px var(--font-sans); fill: var(--muted); }
