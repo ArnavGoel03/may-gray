@@ -17,8 +17,15 @@ const CLEAR_AT = 50;      // a place counts as usually cleared once fewer than h
 const PLAY_MS = 900;      // one hour per step while playing: slow enough to read the map, fast enough to feel like motion
 const MAP_W = 1010;       // map drawing width in SVG units: 10 units per grid cell
 const MID_LAT = 33.05;    // middle of the grid; a degree of longitude is cos(latitude) as wide as a degree of latitude
-const HIT_R = 22;        // radius of the invisible press target around a place dot, in map units (a finger-sized target on a phone)
-const BOX = 1;            // a picked place is averaged over the cells within BOX of it (3 x 3), to smooth single-cell noise
+const HIT_R = 22;         // radius of the invisible press target around a place dot, in map units, at desktop size
+const HIT_CSS = 14;       // ...but never under 14 CSS px on screen (a 28 px target for a finger on a phone)
+const HIT_MAX = 50;       // ...and never over 50 map units, half the gap between the closest two places (UC San Diego, Downtown)
+const DOT_R = 5.5, DOT_CSS = 3.5;  // dot radius in map units, and the smallest it may look on screen, in CSS px
+const DRAG_PX = 6;        // a press that moves further than this before release is a drag, not a pick
+// A picked place is averaged over the cells within BOX of it (3 x 3). The 0.02 degree grid oversamples the native
+// cloud mask pixel (about 4 to 5 km here, so neighbouring cells often repeat one pixel); the box covers about one to
+// two real pixels each way, which steadies the reading against a single pixel without averaging across a valley.
+const BOX = 1;
 // The right margin holds the end labels; 118 fits the longest one ("UC San Diego") in bold at phone text size.
 const LINE = { w: 460, h: 330, top: 14, right: 118, bottom: 34, left: 48 };
 const LEGEND = { w: 260, h: 40, bar: 10, steps: 60 };
@@ -28,6 +35,7 @@ const $ = (id) => document.getElementById(id);
 function token(name) {
   const probe = document.body.appendChild(document.createElement("i"));
   probe.style.color = `var(${name})`;
+  probe.style.forcedColorAdjust = "none";  // in Windows high contrast the probe's colour would be forced to the text colour
   const rgb = getComputedStyle(probe).color;
   probe.remove();
   return rgb;
@@ -38,6 +46,7 @@ const pct = (v) => `${Math.round(v)}%`;
 // tip: the cell under the pointer and where the pointer is, or null when the pointer is off the map
 const state = { hour: 0, group: ALL, pick: { name: START_PLACE }, timer: null, tip: null };
 let data, color, cellW, cellH, mapH;
+window.mayGrayStarted = true;  // read by the load-event check in index.html
 
 init().catch((err) => {
   console.error(err);
@@ -48,13 +57,19 @@ init().catch((err) => {
 });
 
 async function init() {
-  const [cloud, coast] = await Promise.all([d3.json("data/cloud.json"), d3.json("data/coast.json")]);
+  // The coastline is decoration: without it the map still reads, so its failure only drops the line.
+  const [cloud, coast] = await Promise.all([
+    d3.json("data/cloud.json"),
+    d3.json("data/coast.json").catch((err) => { console.warn("coastline not loaded", err); return null; }),
+  ]);
   data = cloud;
   data.maskedSet = new Set(cloud.masked);
   for (const [name, [lat, lon]] of Object.entries(PLACES)) PLACES[name].cell = cellOf(lat, lon);
   state.pick = { name: START_PLACE, ...at(START_PLACE) };
   color = d3.scaleSequential(d3.interpolateLab(token("--cloud-0"), token("--cloud-100"))).domain([0, 100]);
 
+  $("timebar").hidden = false;
+  $("views").hidden = false;
   buildControls();
   buildMap(coast);
   buildLegend();
@@ -102,7 +117,7 @@ function clearing(c) {
   const first = data.hours[0], last = data.hours[data.hours.length - 1];
   const gray = (v) => Math.round(v) >= CLEAR_AT;
   if (Number.isNaN(c[0])) return `has no reading at ${hourLabel(first)}`;
-  if (!gray(c[0])) return `is not usually gray even at ${hourLabel(first)}`;
+  if (!gray(c[0])) return `is cloudy on fewer than half of days even at ${hourLabel(first)}`;
   const k = c.findLastIndex(gray);
   return k === c.length - 1 ? `is still gray on most days at ${hourLabel(last)}` : `usually clears by ${hourLabel(data.hours[k + 1])}`;
 }
@@ -175,7 +190,7 @@ function buildMap(coast) {
   svg.append("clipPath").attr("id", "frame").append("rect").attr("width", MAP_W).attr("height", mapH);
   const lines = svg.append("g").attr("clip-path", "url(#frame)").attr("pointer-events", "none");
   for (const cls of ["coast-halo", "coast"]) {
-    lines.append("g").selectAll("path").data(coast.coordinates).join("path").attr("class", cls).attr("d", path);
+    lines.append("g").selectAll("path").data(coast?.coordinates ?? []).join("path").attr("class", cls).attr("d", path);
   }
 
   svg.append("rect").attr("class", "picked-halo");
@@ -191,15 +206,32 @@ function buildMap(coast) {
       if (event.key === "Enter" || event.key === " ") { event.preventDefault(); pickPlace(n); }
     });
   places.append("circle").attr("class", "hit").attr("r", HIT_R);
-  places.append("circle").attr("class", "dot").attr("r", 5.5);
+  places.append("circle").attr("class", "dot").attr("r", DOT_R);
+  // On a phone the 1010-unit map is drawn about 360 px wide, so fixed map units would leave a 13 px target and a
+  // 2 px dot. Both are resized to a minimum on-screen size whenever the map's width changes.
+  new ResizeObserver(() => {
+    const scale = $("map").clientWidth / MAP_W;
+    if (!scale) return;
+    places.select(".hit").attr("r", Math.min(HIT_MAX, Math.max(HIT_R, HIT_CSS / scale)));
+    places.select(".dot").attr("r", Math.max(DOT_R, DOT_CSS / scale));
+  }).observe($("map"));
   places.append("text").attr("dy", "0.35em").attr("x", 10).text((n) => n);
 
-  svg.on("pointermove", (event) => { if (event.pointerType !== "touch") trackTip(event); })
-    .on("pointerleave", hideTip)
+  let press = null;  // where and with what the current press started, to tell a tap from a drag
+  svg.on("pointerdown", (event) => { press = { x: event.clientX, y: event.clientY, type: event.pointerType }; })
+    .on("pointermove", (event) => { if (event.pointerType !== "touch") trackTip(event); })
+    .on("pointerleave", (event) => { if (event.pointerType !== "touch") hideTip(); })
     .on("click", (event) => {
+      if (press && Math.hypot(event.clientX - press.x, event.clientY - press.y) > DRAG_PX) return;
       const c = cellAt(event);
-      if (c) { state.pick = c; render(); }
+      if (!c) return;
+      state.pick = c;
+      render();
+      // A touch has no hover, so the tapped cell's reading is shown at the tap until the page scrolls.
+      if (press?.type === "touch") trackTip(event);
     });
+  // The tooltip is fixed to the window, so once the page scrolls it would sit over a different cell.
+  addEventListener("scroll", () => { if (state.tip) hideTip(); }, { passive: true });
 }
 function x0(j) { return j * cellW; }
 function y0(i) { return mapH - (i + 1) * cellH; }
@@ -306,6 +338,8 @@ function writeIntro() {
   howto.hidden = false;
   $("source").textContent = `Source: ${data.source}, ${hourLabel(first)} to ${hourLabel(data.hours[data.hours.length - 1])} `
     + `Pacific Daylight Time, ${groupLabel(ALL)}, on a ${data.step} degree grid. The mask counts any cloud, not only the marine layer. `
+    + `Earlier hours are left out because the mask misses much of the low cloud around sunrise, and a few scans are `
+    + `missing, so some cells count one or two days fewer. `
     + `Coastline: Natural Earth.`;
 }
 
@@ -357,6 +391,9 @@ function render() {
     : `At ${hourLabel(h)}, ${name} was cloudy on ${pct(sel[hour])} of days, against ${pct(ref[hour])} at the coast `
       + `(the average of ${COASTAL.length} places from ${COASTAL[0]} to ${COASTAL[COASTAL.length - 1]}). `
       + `${name} ${clearing(sel)}; the coast ${clearing(ref)}.`
+      // the afternoon floor is part of the story: the coast stays near 40% from 1 PM on and never fully clears
+      + (hour === last || Number.isNaN(sel[last]) ? ""
+        : ` At ${hourLabel(data.hours[last])}, ${name} was still cloudy on ${pct(sel[last])} of days and the coast on ${pct(ref[last])}.`)
       + (isMasked(pick.i, pick.j) ? " The picked cell itself is not counted, so this is the average of the cells around it." : "");
   drawTip();
 }

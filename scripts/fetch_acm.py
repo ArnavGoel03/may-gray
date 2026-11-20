@@ -29,7 +29,7 @@ PRODUCT = "ABI-L2-ACMC"
 # San Diego County coast to the inland mountains, with ocean to the west.
 LAT_MIN, LAT_MAX = 32.50, 33.60
 LON_MIN, LON_MAX = -118.00, -116.00
-STEP = 0.02  # degrees, about 2.2 km, close to the ABI cloud mask pixel size here
+STEP = 0.02  # degrees, about 2.2 km: finer than the cloud mask pixel here (about 4 to 5 km), so neighbouring cells often repeat one pixel
 # 6 AM to 4 PM Pacific Daylight Time (UTC-7): covers formation-at-dawn through burn-off.
 HOURS_UTC = list(range(13, 24))
 RETRIES = 4

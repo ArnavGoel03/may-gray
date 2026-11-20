@@ -62,6 +62,9 @@ try {
   const cap0 = await page.locator("#line-caption").textContent();
   check("default place reading", cap0.includes(`El Cajon was cloudy on ${EXPECT.elCajon8}`) && cap0.includes(`${EXPECT.coast8} at the coast`), cap0);
   check("default clearing hour", cap0.includes(`El Cajon usually clears by ${EXPECT.elCajonClears}`), cap0);
+  check("caption gives the 4 PM floor", /At 4 PM, El Cajon was still cloudy on \d+% of days and the coast on \d+%\./.test(cap0), cap0);
+  // the label wraps the hour readout before the slider, so without for="hour" the slider would have no name
+  check("slider is named", (await page.getByRole("slider", { name: "Hour of day" }).count()) === 1);
   await page.screenshot({ path: join(SHOTS, "desktop-8am.png"), fullPage: true });
 
   // Interaction 1: the hour slider recolours the map and moves the chart
@@ -102,7 +105,7 @@ try {
   await page.locator("#map .place", { hasText: "Julian" }).focus();
   await page.keyboard.press("Enter");
   check("keyboard picks a place", (await page.locator("#line-title").textContent()) === "Julian against the coast");
-  check("Julian is not gray at 8 AM", (await page.locator("#line-caption").textContent()).includes("Julian is not usually gray even at 8 AM"));
+  check("Julian is not gray at 8 AM", (await page.locator("#line-caption").textContent()).includes("Julian is cloudy on fewer than half of days even at 8 AM"));
 
   // Interaction 4: clicking any cell picks it; hovering shows a tooltip
   const box = await page.locator("#map").boundingBox();
@@ -117,6 +120,13 @@ try {
   check("no place marked after a cell click", (await page.locator("#map .place.on").count()) === 0);
   await page.mouse.move(2, 2);
   check("tooltip hides off the map", await page.locator("#tip").isHidden());
+  const titleBeforeDrag = await page.locator("#line-title").textContent();
+  await page.mouse.move(box.x + box.width * 0.3, box.y + box.height * 0.5);
+  await page.mouse.down();
+  await page.mouse.move(box.x + box.width * 0.6, box.y + box.height * 0.6, { steps: 8 });
+  await page.mouse.up();
+  check("a drag across the map does not pick", (await page.locator("#line-title").textContent()) === titleBeforeDrag);
+  await page.mouse.move(2, 2);
   const cellXY = ({ i, j }) => [box.x + ((j + 0.5) / GRID.nlon) * box.width, box.y + (1 - (i + 0.5) / GRID.nlat) * box.height];
   await page.mouse.click(...cellXY(MASKED_CELL));
   check("masked cell tooltip", (await page.locator("#tip").textContent()).includes("Not counted"));
@@ -177,6 +187,15 @@ try {
   await phone.locator("#map .place", { hasText: "Ramona" }).tap();
   check("tap picks a place", (await phone.locator("#line-title").textContent()) === "Ramona against the coast");
   check("no tooltip left after a tap", await phone.locator("#tip").isHidden());
+  // the 1010-unit map is drawn about 360 px wide here, so the place targets are scaled up to stay finger-sized
+  const hit = await phone.locator("#map .place .hit").first().boundingBox();
+  check("place targets are at least 28 px on a phone", hit.width >= 27.5, `${hit.width}px`);
+  const pb = await phone.locator("#map").boundingBox();
+  await phone.touchscreen.tap(pb.x + pb.width * 0.5, pb.y + pb.height * 0.15);
+  check("a tapped cell shows its reading", await phone.locator("#tip").isVisible());
+  await phone.mouse.wheel(0, 300);
+  await phone.waitForFunction(() => document.getElementById("tip").hidden, null, { timeout: 2000 }).catch(() => {});
+  check("the reading hides when the page scrolls", await phone.locator("#tip").isHidden());
   const overlaps = await phone.$$eval("#map .place text", (ts) => {
     const r = ts.map((t) => [t.textContent, t.getBoundingClientRect()]), out = [];
     for (let a = 0; a < r.length; a++) for (let b = a + 1; b < r.length; b++) {
@@ -194,6 +213,20 @@ try {
   check("chart labels fit on a phone", clipped.length === 0, clipped.join(", "));
   await phone.screenshot({ path: join(SHOTS, "phone.png"), fullPage: true });
   await phone.close();
+
+  // Failure modes: without the cloud data the page says so and shows no dead controls; without the coastline it still works
+  const broken = await browser.newPage();
+  await broken.route("**/data/cloud.json", (route) => route.abort());
+  await broken.goto(baseURL, { waitUntil: "load" });
+  await broken.waitForFunction(() => document.getElementById("status").classList.contains("error"), null, { timeout: 10000 });
+  check("data failure hides the controls", (await broken.locator("#timebar, #views").count()) === 2
+    && (await broken.locator("#timebar").isHidden()) && (await broken.locator("#views").isHidden()));
+  await broken.close();
+  const noCoast = await browser.newPage();
+  await noCoast.route("**/data/coast.json", (route) => route.abort());
+  await noCoast.goto(baseURL, { waitUntil: "load" });
+  check("map draws without the coastline", await noCoast.waitForSelector("#map .cells rect[fill]", { timeout: 10000 }).then(() => true, () => false));
+  await noCoast.close();
 
   check("no console errors", errors.length === 0, errors.join(" | "));
   check("no failed requests", bad.length === 0, bad.join(" | "));

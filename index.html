@@ -15,12 +15,14 @@
     <p class="howto" id="howto" hidden></p>  <!-- numbers filled from the data once it has loaded -->
     <p class="jump"><a href="#w0">Jump to the prototype write-up</a></p>
     <p class="status" id="status" role="status">Loading the cloud data.</p>
-    <noscript><p class="status error">This page draws its map and chart with JavaScript, which is turned off in this browser.</p></noscript>
+    <noscript><style>#status { display: none; }</style><p class="status error">This page draws its map and chart with JavaScript, which is turned off in this browser.</p></noscript>
   </header>
 
   <!-- the hour row stays pinned while scrolling, so the map can be watched while the slider moves -->
-  <section class="timebar" aria-label="Hour and year">
-    <label class="hour-ctl"><span class="vh">Hour of day </span><output id="hour-out" for="hour"></output>
+  <section class="timebar" id="timebar" aria-label="Hour and year" hidden>  <!-- shown by app.js once the data has loaded -->
+    <!-- for="hour": without it the label would name the output, which comes first; the output is hidden from assistive tech
+         because the slider's aria-valuetext already says the hour, and as an implicit live region it would talk every Play step -->
+    <label class="hour-ctl" for="hour"><span class="vh">Hour of day </span><output id="hour-out" for="hour" aria-hidden="true"></output>
       <input type="range" id="hour" min="0" max="8" step="1" value="0" />
     </label>
     <div class="hour-ticks" id="hour-ticks" aria-hidden="true"></div>  <!-- tick labels under the slider, filled by app.js -->
@@ -34,7 +36,7 @@
   <main>
     <section class="step" aria-labelledby="s1">
       <h2 id="s1"><span class="num">1</span> Watch the gray pull back to the coast</h2>
-      <div class="views">
+      <div class="views" id="views" hidden>  <!-- shown by app.js once the data has loaded -->
         <figure class="map-wrap">
           <svg id="map" role="group" aria-label="Map of San Diego County showing the share of days each place was cloudy at the selected hour. The named places are buttons that draw that place in the chart."></svg>
           <div class="legend">
@@ -67,7 +69,7 @@
     <section class="writeup" aria-labelledby="w0">
       <h2 id="w0">Prototype write-up</h2>
       <h3 id="w1">What have you done so far?</h3>
-      <p id="done">So far, I have downloaded the GOES-18 clear sky mask for every day of May and June in 2023, 2024 and 2025, which comes to 183 days, and put the first scan of each hour between 8 AM and 4 PM on a 0.02 degree grid over San Diego County. From that I worked out, for each grid cell and each hour, the share of days on which it was cloudy, and I marked 21 cells that read far cloudier than everything around them, as they point to the surface and not the weather. The main visualization on this page is a map of that share, and the reader can drag the hour slider or press Play to watch the gray pull back towards the coast through the day. Clicking a place or any cell on the map draws its curve across the day next to the coastal average, whilst the year buttons switch the whole page between the three years and the pooled average. I have also laid out the sections the final page will have, so the parts that are still missing show up as placeholders on the page.</p>
+      <p id="done">So far, I have downloaded the GOES-18 clear sky mask for every day of May and June in 2023, 2024 and 2025, which comes to 183 days, and put the first scan of each hour between 8 AM and 4 PM on a 0.02 degree grid over San Diego County. From that I worked out, for each grid cell and each hour, the share of days on which it was cloudy, and I marked 21 cells that read far cloudier than everything around them, as they most likely point to the surface and not the weather. The main visualization on this page is a map of that share, and the reader can drag the hour slider or press Play to watch the gray pull back towards the coast through the day. Clicking a place or any cell on the map draws its curve across the day next to the coastal average, whilst the year buttons switch the whole page between the three years and the pooled average. I have also laid out the sections the final page will have, so the parts that are still missing show up as placeholders on the page.</p>
       <h3 id="w2">What will be the most challenging part of your project to design, and why?</h3>
       <p id="hard">The most challenging part to design will be the line that the reader drags inland, since it has to work as an interaction and also carry the main point of the story. A straight line from the beach to the mountains crosses the open ocean, the shoreline and several valleys, so the chart it draws can look jumpy, and I have to decide how much to smooth it without hiding what the data shows. It also has to stay linked to the map and the hour slider, which means three views changing at once, and that can easily confuse a reader instead of helping. Another difficulty is that the clear sky mask only says cloudy or clear, hence I cannot show the marine layer itself and will have to explain it through annotations that do not claim more than the data supports. Three years is also a small sample and each year has only 61 days, so showing how much the years differ without making the noise look like a finding will take some care.</p>
     </section>
@@ -81,5 +83,15 @@
   </footer>
   <script src="vendor/d3.v7.9.2.min.js"></script>
   <script type="module" src="app.js"></script>
+  <script>
+    // A module script does not run from file:// or when app.js fails to load, and then the page would say
+    // "Loading" forever. By the load event app.js has run (modules are deferred), so a missing flag means it never will.
+    addEventListener("load", () => {
+      if (window.mayGrayStarted) return;
+      const s = document.getElementById("status");
+      s.textContent = "The page could not start. Open it from https://arnavgoel03.github.io/may-gray/ or reload to try again.";
+      s.classList.add("error");
+    });
+  </script>
 </body>
 </html>
