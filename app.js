@@ -21,7 +21,9 @@ const HIT_R = 22;         // radius of the invisible press target around a place
 const HIT_CSS = 14;       // ...but never under 14 CSS px on screen (a 28 px target for a finger on a phone)
 const HIT_MAX = 50;       // ...and never over 50 map units, half the gap between the closest two places (UC San Diego, Downtown)
 const DOT_R = 5.5, DOT_CSS = 3.5;  // dot radius in map units, and the smallest it may look on screen, in CSS px
-const DRAG_PX = 6;        // a press that moves further than this before release is a drag, not a pick
+const LABEL_GAP = 4.5;    // map units between a place dot's edge and its label
+const DRAG_PX = 6;
+const BAR_MAX = 0.3;      // the pinned hour bar may cover at most this share of the window height, else it scrolls away        // a press that moves further than this before release is a drag, not a pick
 // A picked place is averaged over the cells within BOX of it (3 x 3). The 0.02 degree grid oversamples the native
 // cloud mask pixel (about 4 to 5 km here, so neighbouring cells often repeat one pixel); the box covers about one to
 // two real pixels each way, which steadies the reading against a single pixel without averaging across a valley.
@@ -54,6 +56,7 @@ init().catch((err) => {
   s.textContent = "The cloud data could not be loaded. Reload the page to try again.";
   s.classList.add("error");
   s.hidden = false;
+  for (const id of ["timebar", "views"]) $(id).hidden = true;  // no dead controls, and no empty space where they were
 });
 
 async function init() {
@@ -68,13 +71,17 @@ async function init() {
   state.pick = { name: START_PLACE, ...at(START_PLACE) };
   color = d3.scaleSequential(d3.interpolateLab(token("--cloud-0"), token("--cloud-100"))).domain([0, 100]);
 
-  $("timebar").hidden = false;
-  $("views").hidden = false;
   buildControls();
   buildMap(coast);
   buildLegend();
   buildLine();
   writeIntro();
+  // Shown only once everything is built, so a failure above leaves no half-built controls on screen.
+  for (const id of ["timebar", "views"]) $(id).classList.remove("pending");
+  // The bar's height depends on width, zoom and font size, so the pin is decided on its measured height.
+  const pinBar = () => document.documentElement.classList.toggle("bar-static", $("timebar").offsetHeight > BAR_MAX * innerHeight);
+  new ResizeObserver(pinBar).observe($("timebar"));
+  addEventListener("resize", pinBar);
   $("status").hidden = true;
   render();
 }
@@ -137,7 +144,10 @@ function buildControls() {
   slider.max = data.hours.length - 1;
   slider.value = state.hour;
   slider.addEventListener("input", () => { stop(); setHour(+slider.value); });
-  d3.select("#hour-ticks").selectAll("span").data(data.hours).join("span").text((h) => hourLabel(h));
+  const ticks = d3.select("#hour-ticks").selectAll("span").data(data.hours).join("span").text((h) => hourLabel(h));
+  // Show every hour if the labels fit, else every 2nd, 4th or 8th (first, middle and last at worst), measured on the
+  // real text, so a narrow screen or a large minimum font size never runs them together.
+  new ResizeObserver(() => fitTicks(ticks)).observe($("hour-ticks"));
 
   $("play").addEventListener("click", () => (state.timer ? stop() : play()));
 
@@ -149,6 +159,17 @@ function buildControls() {
   labels.append("span").text((d) => (d === ALL ? "All years" : d));
 }
 
+const TICK_GAP = 6;  // px of clear space required between two neighbouring hour labels
+function fitTicks(ticks) {
+  const nodes = ticks.nodes();
+  // each span is zero-width with its text centred over it, so the text's own box is measured
+  const textBox = (el) => { const r = document.createRange(); r.selectNodeContents(el); return r.getBoundingClientRect(); };
+  for (const stride of [1, 2, 4, 8]) {
+    ticks.style("visibility", (_, k) => (k % stride === 0 || k === nodes.length - 1 ? null : "hidden"));
+    const shown = nodes.filter((el) => el.style.visibility !== "hidden").map(textBox);
+    if (shown.every((r, k) => k === 0 || r.left >= shown[k - 1].right + TICK_GAP)) return;
+  }
+}
 function setHour(h) {
   state.hour = h;
   render();
@@ -197,10 +218,17 @@ function buildMap(coast) {
   svg.append("rect").attr("class", "picked");
   svg.append("rect").attr("class", "hover").attr("width", cellW).attr("height", cellH).attr("visibility", "hidden");
 
+  // Labels sit in their own layer under every dot and press target: on a phone a long label (UC San Diego) reaches
+  // into a neighbour's target (El Cajon), and a label drawn on top would steal that press. A label press still picks.
+  const placeAt = (n) => `translate(${px(PLACES[n][1])},${py(PLACES[n][0])})`;
+  const labels = svg.append("g").selectAll("text").data(MAP_PLACES).join("text")
+    .attr("class", "place-label").attr("data-name", (n) => n).attr("aria-hidden", "true")
+    .attr("transform", placeAt).attr("dy", "0.35em").attr("x", DOT_R + LABEL_GAP).text((n) => n)
+    .on("click", (event, n) => { event.stopPropagation(); pickPlace(n); });
   const places = svg.append("g").selectAll("g").data(MAP_PLACES).join("g")
-    .attr("class", "place").attr("tabindex", 0).attr("role", "button")
+    .attr("class", "place").attr("data-name", (n) => n).attr("tabindex", 0).attr("role", "button")
     .attr("aria-label", (n) => `Show ${n} in the chart`)
-    .attr("transform", (n) => `translate(${px(PLACES[n][1])},${py(PLACES[n][0])})`)
+    .attr("transform", placeAt)
     .on("click", (event, n) => { event.stopPropagation(); pickPlace(n); })
     .on("keydown", (event, n) => {
       if (event.key === "Enter" || event.key === " ") { event.preventDefault(); pickPlace(n); }
@@ -213,23 +241,31 @@ function buildMap(coast) {
     const scale = $("map").clientWidth / MAP_W;
     if (!scale) return;
     places.select(".hit").attr("r", Math.min(HIT_MAX, Math.max(HIT_R, HIT_CSS / scale)));
-    places.select(".dot").attr("r", Math.max(DOT_R, DOT_CSS / scale));
+    const dot = Math.max(DOT_R, DOT_CSS / scale);
+    places.select(".dot").attr("r", dot);
+    labels.attr("x", dot + LABEL_GAP);  // the label starts clear of the dot at any size
   }).observe($("map"));
-  places.append("text").attr("dy", "0.35em").attr("x", 10).text((n) => n);
 
   let press = null;  // where and with what the current press started, to tell a tap from a drag
   svg.on("pointerdown", (event) => { press = { x: event.clientX, y: event.clientY, type: event.pointerType }; })
     .on("pointermove", (event) => { if (event.pointerType !== "touch") trackTip(event); })
     .on("pointerleave", (event) => { if (event.pointerType !== "touch") hideTip(); })
     .on("click", (event) => {
-      if (press && Math.hypot(event.clientX - press.x, event.clientY - press.y) > DRAG_PX) return;
+      // A touch drag scrolls the page and never becomes a click, while the browser's touch adjustment can move a
+      // real tap's click point several px, so only mouse and pen presses are judged by distance.
+      const moved = press && press.type !== "touch" && Math.hypot(event.clientX - press.x, event.clientY - press.y) > DRAG_PX;
+      const type = press?.type;
+      press = null;  // used once, so a later click with no press of its own is never judged by this one
+      if (moved) return;
       const c = cellAt(event);
       if (!c) return;
       state.pick = c;
       render();
       // A touch has no hover, so the tapped cell's reading is shown at the tap until the page scrolls.
-      if (press?.type === "touch") trackTip(event);
+      if (type === "touch") trackTip(event);
     });
+  // A touch reading has no pointer leaving to end it, so a press anywhere off the map (Play, a year, the page) does.
+  document.addEventListener("pointerdown", (event) => { if (state.tip && !event.target.closest("#map")) hideTip(); });
   // The tooltip is fixed to the window, so once the page scrolls it would sit over a different cell.
   addEventListener("scroll", () => { if (state.tip) hideTip(); }, { passive: true });
 }
@@ -241,6 +277,7 @@ function cellAt(event) {
   return i >= 0 && i < data.nlat && j >= 0 && j < data.nlon ? { i, j } : null;
 }
 function pickPlace(name) {
+  hideTip();  // a reading left from an earlier cell tap would otherwise be redrawn by render()
   state.pick = { name, ...at(name) };
   render();
 }
@@ -360,6 +397,7 @@ function render() {
   d3.selectAll("#map .picked, #map .picked-halo")
     .attr("x", x0(j0)).attr("y", y0(i1)).attr("width", (j1 - j0 + 1) * cellW).attr("height", (i1 - i0 + 1) * cellH);
   d3.selectAll("#map .place").classed("on", (n) => n === pick.name).attr("aria-pressed", (n) => n === pick.name);
+  d3.selectAll("#map .place-label").classed("on", (n) => n === pick.name);
   $("map-caption").textContent = `Share of days each place was cloudy at ${hourLabel(h)}, ${groupLabel(group)}. `
     + `The ocean cells are real readings: the cloud deck sits over the water for most of the day. `
     + `The orange box marks the area drawn in the chart.`

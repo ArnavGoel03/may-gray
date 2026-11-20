@@ -98,11 +98,11 @@ try {
 
   // Interaction 3: picking a place (mouse and keyboard) redraws the chart
   await page.locator("#hour").fill("0");
-  await page.locator("#map .place", { hasText: "UC San Diego" }).click();
+  await page.locator('#map .place[data-name="UC San Diego"]').click();
   check("place click sets the chart title", (await page.locator("#line-title").textContent()) === "UC San Diego against the coast");
   check("place reading", (await page.locator("#line-caption").textContent()).includes(`UC San Diego was cloudy on ${EXPECT.ucsd8}`));
   check("picked place is marked", (await page.locator("#map .place.on").count()) === 1);
-  await page.locator("#map .place", { hasText: "Julian" }).focus();
+  await page.locator('#map .place[data-name="Julian"]').focus();
   await page.keyboard.press("Enter");
   check("keyboard picks a place", (await page.locator("#line-title").textContent()) === "Julian against the coast");
   check("Julian is not gray at 8 AM", (await page.locator("#line-caption").textContent()).includes("Julian is cloudy on fewer than half of days even at 8 AM"));
@@ -134,7 +134,7 @@ try {
   await page.mouse.move(2, 2);
 
   // A reading printed as 50% is never also called cleared (UC San Diego at noon is 49.9%)
-  await page.locator("#map .place", { hasText: "UC San Diego" }).click();
+  await page.locator('#map .place[data-name="UC San Diego"]').click();
   await page.locator("#hour").fill("4");
   const ucsdNoon = await page.locator("#line-caption").textContent();
   check("UC San Diego at noon", ucsdNoon.includes("cloudy on 50% of days") && ucsdNoon.includes("UC San Diego usually clears by 1 PM"), ucsdNoon);
@@ -144,7 +144,7 @@ try {
   await page.locator("#hour").fill("0");
 
   // Interaction 5: the year buttons switch the data
-  await page.locator("#map .place", { hasText: "El Cajon" }).click();
+  await page.locator('#map .place[data-name="El Cajon"]').click();
   const all = await page.locator("#line-caption").textContent();
   await page.locator("#year-radios label", { hasText: "2023" }).click();
   const y23 = await page.locator("#line-caption").textContent();
@@ -184,7 +184,7 @@ try {
   await phone.waitForSelector("#map .cells rect[fill]", { timeout: 15000 });
   const overflow = await phone.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
   check("no sideways scroll on a phone", overflow <= 0, `${overflow}px`);
-  await phone.locator("#map .place", { hasText: "Ramona" }).tap();
+  await phone.locator('#map .place[data-name="Ramona"]').tap();
   check("tap picks a place", (await phone.locator("#line-title").textContent()) === "Ramona against the coast");
   check("no tooltip left after a tap", await phone.locator("#tip").isHidden());
   // the 1010-unit map is drawn about 360 px wide here, so the place targets are scaled up to stay finger-sized
@@ -196,7 +196,25 @@ try {
   await phone.mouse.wheel(0, 300);
   await phone.waitForFunction(() => document.getElementById("tip").hidden, null, { timeout: 2000 }).catch(() => {});
   check("the reading hides when the page scrolls", await phone.locator("#tip").isHidden());
-  const overlaps = await phone.$$eval("#map .place text", (ts) => {
+  const tapCell = async () => {
+    await phone.locator("#map").scrollIntoViewIfNeeded();
+    const m = await phone.locator("#map").boundingBox();
+    await phone.touchscreen.tap(m.x + m.width * 0.5, m.y + m.height * 0.15);
+  };
+  await tapCell();
+  await phone.locator('#map .place[data-name="Escondido"]').tap();
+  check("a place tap clears an earlier cell reading", await phone.locator("#tip").isHidden());
+  await tapCell();
+  await phone.locator("#year-radios label", { hasText: "2024" }).tap();
+  check("a tap off the map clears the cell reading", await phone.locator("#tip").isHidden());
+  // the dot grows on a phone, so each label must still start clear of its dot
+  const touching = await phone.$$eval("#map .place", (gs) => gs.filter((g) => {
+    const d = g.querySelector(".dot").getBoundingClientRect();
+    const t = document.querySelector(`#map .place-label[data-name="${g.dataset.name}"]`).getBoundingClientRect();
+    return t.left < d.right;
+  }).map((g) => g.dataset.name));
+  check("place labels clear their dots on a phone", touching.length === 0, touching.join(", "));
+  const overlaps = await phone.$$eval("#map .place-label", (ts) => {
     const r = ts.map((t) => [t.textContent, t.getBoundingClientRect()]), out = [];
     for (let a = 0; a < r.length; a++) for (let b = a + 1; b < r.length; b++) {
       const [p, q] = [r[a][1], r[b][1]];
@@ -205,14 +223,57 @@ try {
     return out;
   });
   check("place labels do not overlap on a phone", overlaps.length === 0, overlaps.join(", "));
-  await phone.locator("#map .place", { hasText: "UC San Diego" }).tap();
+  await phone.locator('#map .place[data-name="UC San Diego"]').tap();
   const clipped = await phone.$$eval("#line text", (ts) => {
     const svg = document.getElementById("line").getBoundingClientRect();
     return ts.filter((t) => { const r = t.getBoundingClientRect(); return r.right > svg.right || r.left < svg.left; }).map((t) => t.textContent);
   });
   check("chart labels fit on a phone", clipped.length === 0, clipped.join(", "));
+  // a neighbour's long label (UC San Diego) reaches into El Cajon's target; labels sit under every target
+  const ec = await phone.locator('#map .place[data-name="El Cajon"] .dot').boundingBox();
+  const above = await phone.evaluate(([x, y]) => document.elementFromPoint(x, y)?.closest(".place")?.dataset.name, [ec.x + ec.width / 2, ec.y + ec.height / 2 - 11]);
+  check("a tap just above El Cajon picks El Cajon", above === "El Cajon", String(above));
   await phone.screenshot({ path: join(SHOTS, "phone.png"), fullPage: true });
   await phone.close();
+
+  // 320 px (a small phone, or 400% zoom): nothing sideways, years all inside the bar, hour labels apart
+  const tiny = await browser.newPage({ viewport: { width: 320, height: 568 } });
+  await tiny.goto(baseURL, { waitUntil: "networkidle" });
+  await tiny.waitForSelector("#map .cells rect[fill]", { timeout: 15000 });
+  check("no sideways scroll at 320 px", await tiny.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
+  const fit = await tiny.evaluate(() => {
+    const bar = document.getElementById("timebar").getBoundingClientRect();
+    const out = [...document.querySelectorAll("#year-radios label")].filter((l) => l.getBoundingClientRect().right > bar.right).map((l) => l.textContent);
+    const boxes = [...document.querySelectorAll("#hour-ticks span")].filter((s) => s.style.visibility !== "hidden").map((s) => {
+      const r = document.createRange(); r.selectNodeContents(s); return r.getBoundingClientRect();
+    });
+    const hits = boxes.filter((r, k) => k > 0 && r.left < boxes[k - 1].right).length;
+    return { out, hits, shown: boxes.length };
+  });
+  check("years fit the bar at 320 px", fit.out.length === 0, fit.out.join(", "));
+  check("hour labels do not collide at 320 px", fit.hits === 0 && fit.shown >= 2, JSON.stringify(fit));
+  await tiny.screenshot({ path: join(SHOTS, "phone-320.png") });
+  await tiny.setViewportSize({ width: 640, height: 360 });  // phone held sideways, or 200% zoom
+  await tiny.waitForFunction(() => getComputedStyle(document.getElementById("timebar")).position === "static", null, { timeout: 2000 }).catch(() => {});
+  check("a tall bar on a short window scrolls away", await tiny.evaluate(() => getComputedStyle(document.getElementById("timebar")).position === "static"));
+  await tiny.setViewportSize({ width: 1280, height: 900 });
+  await tiny.waitForFunction(() => getComputedStyle(document.getElementById("timebar")).position === "sticky", null, { timeout: 2000 }).catch(() => {});
+  check("the bar pins again on a tall window", await tiny.evaluate(() => getComputedStyle(document.getElementById("timebar")).position === "sticky"));
+  await tiny.close();
+
+  // The page must not jump when the data arrives (Cumulative Layout Shift under 0.1, the "good" threshold)
+  const cls = await browser.newPage({ viewport: { width: 1280, height: 800 } });
+  await cls.addInitScript(() => {
+    window.__cls = 0;
+    new PerformanceObserver((l) => { for (const e of l.getEntries()) if (!e.hadRecentInput) window.__cls += e.value; })
+      .observe({ type: "layout-shift", buffered: true });
+  });
+  await cls.goto(baseURL, { waitUntil: "networkidle" });
+  await cls.waitForSelector("#map .cells rect[fill]", { timeout: 15000 });
+  await cls.waitForTimeout(300);
+  const shift = await cls.evaluate(() => window.__cls);
+  check("no layout jump on load", shift < 0.1, shift.toFixed(3));
+  await cls.close();
 
   // Failure modes: without the cloud data the page says so and shows no dead controls; without the coastline it still works
   const broken = await browser.newPage();

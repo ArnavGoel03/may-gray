@@ -41,7 +41,8 @@
   --ease: cubic-bezier(0.2, 0.7, 0.2, 1);
 }
 * { box-sizing: border-box; }
-[hidden] { display: none !important; }  /* the bar and the views are display: grid, which would otherwise beat hidden */
+[hidden] { display: none !important; }
+.pending { visibility: hidden; }  /* laid out but not shown or focusable until the data is in */  /* the bar and the views are display: grid, which would otherwise beat hidden */
 html { -webkit-text-size-adjust: 100%; scroll-padding-top: var(--bar-clear); }
 body {
   margin: 0 auto; max-width: var(--page); padding: 28px 24px 24px;
@@ -152,8 +153,8 @@ svg { display: block; width: 100%; height: auto; }
 #map .place { cursor: pointer; }
 #map .place .hit { fill: transparent; }
 #map .place .dot { fill: var(--panel); stroke: var(--ink); stroke-width: 1.6; }
-#map .place text {
-  font: 600 15px var(--font-sans); fill: var(--ink); paint-order: stroke; stroke: var(--halo); stroke-width: 4;
+#map .place-label {
+  cursor: pointer; font: 600 15px var(--font-sans); fill: var(--ink); paint-order: stroke; stroke: var(--halo); stroke-width: 4;
   stroke-linejoin: round;
 }
 #map .place.on .dot { fill: var(--accent); stroke: var(--halo); }
@@ -170,7 +171,12 @@ svg { display: block; width: 100%; height: auto; }
 
 /* Line chart */
 .line-wrap h3 { margin: 0 0 8px; font-size: 1.05rem; line-height: 1.3; text-wrap: balance; }
-#line { cursor: pointer; touch-action: manipulation; }
+/* Space is kept for both charts before the data arrives, so the page does not jump when they are drawn. The ratios are
+   the viewBoxes app.js draws: the map is MAP_W (1010) wide and 56 rows of 10 / cos(33.05 deg) units tall, the chart
+   is LINE.w x LINE.h. */
+#map { aspect-ratio: 1010 / 668.3; }
+/* overflow: a large minimum font size can push an axis label past the chart's edge, into the figure padding */
+#line { aspect-ratio: 460 / 330; overflow: visible; cursor: pointer; touch-action: manipulation; }
 #line text { font: 12px var(--font-sans); fill: var(--muted); }
 #line .grid line { stroke: var(--rule); }
 #line .half line { stroke: var(--muted); stroke-dasharray: 4 4; }
@@ -209,17 +215,23 @@ footer p { margin: 0 0 4px; max-width: 96ch; }
   .timebar { grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "hour play" "ticks ." "years years"; row-gap: 6px; }
   .hour-ctl { grid-template-columns: 3.6rem minmax(0, 1fr); gap: 8px; }
   .hour-ticks { margin-left: calc(3.6rem + 8px + var(--thumb) / 2); }
-  .hour-ticks span:nth-child(even) { visibility: hidden; }  /* every other hour label, so they do not collide on a phone */
   #hour-out { font-size: 1.15rem; }
-  #map .place text { font-size: 28px; }                      /* the map is drawn 1010 units wide, so text shrinks with it */
+  #map .place-label { font-size: 28px; }                      /* the map is drawn 1010 units wide, so text shrinks with it */
   #line text { font-size: 14px; }
 }
-/* A short window (a phone held sideways, or a laptop at 200% zoom): the pinned bar would take over a third of the
-   height, so it scrolls with the page instead. */
-@media (max-height: 500px) {
-  html { scroll-padding-top: 0; }
-  .timebar { position: static; }
+/* Very narrow (a 320 px phone, or 400% zoom): the slider gets its own full-width row, and the years may wrap. */
+@media (max-width: 400px) {
+  .timebar { grid-template-areas: "out play" "slider slider" "ticks ticks" "years years"; }
+  .hour-ctl { display: contents; }
+  #hour-out { grid-area: out; white-space: nowrap; }
+  #hour { grid-area: slider; }
+  .hour-ticks { margin: 0 calc(var(--thumb) / 2); }
+  .seg { display: flex; flex-wrap: wrap; }
 }
+/* Set by app.js when the pinned bar would cover too much of the window (a phone held sideways, 200% zoom, a large
+   minimum font size): it then scrolls with the page instead. */
+html.bar-static { scroll-padding-top: 0; }
+html.bar-static .timebar { position: static; }
 /* Windows high contrast: the map, legend and chart colours are the data, so they keep their own colours, and the
    picked year gets an outline because its white pill is removed. */
 @media (forced-colors: active) {

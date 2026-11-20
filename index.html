@@ -19,7 +19,7 @@
   </header>
 
   <!-- the hour row stays pinned while scrolling, so the map can be watched while the slider moves -->
-  <section class="timebar" id="timebar" aria-label="Hour and year" hidden>  <!-- shown by app.js once the data has loaded -->
+  <section class="timebar pending" id="timebar" aria-label="Hour and year">  <!-- invisible until app.js has loaded the data; its space is kept so nothing jumps -->
     <!-- for="hour": without it the label would name the output, which comes first; the output is hidden from assistive tech
          because the slider's aria-valuetext already says the hour, and as an implicit live region it would talk every Play step -->
     <label class="hour-ctl" for="hour"><span class="vh">Hour of day </span><output id="hour-out" for="hour" aria-hidden="true"></output>
@@ -36,7 +36,7 @@
   <main>
     <section class="step" aria-labelledby="s1">
       <h2 id="s1"><span class="num">1</span> Watch the gray pull back to the coast</h2>
-      <div class="views" id="views" hidden>  <!-- shown by app.js once the data has loaded -->
+      <div class="views pending" id="views">  <!-- invisible until app.js has loaded the data; its space is kept so nothing jumps -->
         <figure class="map-wrap">
           <svg id="map" role="group" aria-label="Map of San Diego County showing the share of days each place was cloudy at the selected hour. The named places are buttons that draw that place in the chart."></svg>
           <div class="legend">
