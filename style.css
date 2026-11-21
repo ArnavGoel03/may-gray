@@ -36,6 +36,8 @@
   --bar-top: 10px;                      /* gap above the pinned hour bar */
   --bar-clear: 150px;                   /* tallest the pinned bar gets (phone layout) plus its gap; focused elements scroll to below it */
   --thumb: 20px;                        /* slider thumb; the tick labels are inset by half of it */
+  --out-w: 4.8rem;                      /* hour readout column: fits "11 AM", the widest label, on one line at 1.35rem */
+  --out-gap: 12px;                      /* between the readout and the slider */
   --track: 6px;
   --slider-hit: 28px;                   /* the slider's press area, taller than the thumb so a finger finds it */
   --ease: cubic-bezier(0.2, 0.7, 0.2, 1);
@@ -80,12 +82,12 @@ h1 {
   background: var(--panel-glass); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
   border-radius: var(--r-lg); box-shadow: var(--shadow-bar), 0 0 0 1px var(--rule);
 }
-.hour-ctl { grid-area: hour; display: grid; grid-template-columns: 4.2rem minmax(0, 1fr); align-items: center; gap: 12px; }
-#hour-out { font-family: var(--font-display); font-size: 1.35rem; font-weight: 600; font-variant-numeric: tabular-nums; }
+.hour-ctl { grid-area: hour; display: grid; grid-template-columns: var(--out-w) minmax(0, 1fr); align-items: center; gap: var(--out-gap); }
+#hour-out { font-family: var(--font-display); font-size: 1.35rem; font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap; }  /* a wrapped "10 AM" doubled the bar height mid-Play */
 .hour-ticks {
   grid-area: ticks; display: flex; justify-content: space-between;
   /* lines the labels up with the thumb centres: past the hour readout and its gap, then half a thumb in from each end */
-  margin: 0 calc(var(--thumb) / 2) 0 calc(4.2rem + 12px + var(--thumb) / 2);
+  margin: 0 calc(var(--thumb) / 2) 0 calc(var(--out-w) + var(--out-gap) + var(--thumb) / 2);
   font-size: 0.72rem; color: var(--muted); font-variant-numeric: tabular-nums;
 }
 .hour-ticks span { width: 0; display: flex; justify-content: center; white-space: nowrap; }
@@ -216,8 +218,7 @@ footer p { margin: 0 0 4px; max-width: 96ch; }
 @media (max-width: 640px) {
   body { padding: 20px 14px 20px; }
   .timebar { grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "hour play" "ticks ." "years years"; row-gap: 6px; }
-  .hour-ctl { grid-template-columns: 3.6rem minmax(0, 1fr); gap: 8px; }
-  .hour-ticks { margin-left: calc(3.6rem + 8px + var(--thumb) / 2); }
+  .timebar { --out-w: 4.1rem; --out-gap: 8px; }   /* "11 AM" at 1.15rem */
   #hour-out { font-size: 1.15rem; }
   #map .place-label { font-size: 28px; }                      /* the map is drawn 1010 units wide, so text shrinks with it */
   #line text { font-size: 14px; }
@@ -226,7 +227,7 @@ footer p { margin: 0 0 4px; max-width: 96ch; }
 @media (max-width: 400px) {
   .timebar { grid-template-areas: "out play" "slider slider" "ticks ticks" "years years"; }
   .hour-ctl { display: contents; }
-  #hour-out { grid-area: out; white-space: nowrap; }
+  #hour-out { grid-area: out; }
   #hour { grid-area: slider; }
   .hour-ticks { margin: 0 calc(var(--thumb) / 2); }
   .seg { display: flex; flex-wrap: wrap; }

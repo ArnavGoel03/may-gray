@@ -287,6 +287,23 @@ try {
   await tiny.setViewportSize({ width: 1280, height: 900 });
   await tiny.waitForFunction(() => getComputedStyle(document.getElementById("timebar")).position === "sticky", null, { timeout: 2000 }).catch(() => {});
   check("the bar pins again on a tall window", await tiny.evaluate(() => getComputedStyle(document.getElementById("timebar")).position === "sticky"));
+  // The hour readout stays on one line for every hour at every width: a wrapped "10 AM" doubled the bar's height
+  // mid-Play and covered the section heading under the pinned bar (found while filming the demo video).
+  for (const width of [1280, 900, 641, 640, 401, 400, 320]) {
+    await tiny.setViewportSize({ width, height: 900 });
+    const out = await tiny.evaluate(() => {
+      const o = document.getElementById("hour-out"), s = document.getElementById("hour"), bad = [];
+      const h0 = o.getBoundingClientRect().height;
+      for (let v = 0; v <= +s.max; v++) {
+        s.value = v; s.dispatchEvent(new Event("input"));
+        const r = document.createRange(); r.selectNodeContents(o);
+        const lines = r.getClientRects().length, box = o.getBoundingClientRect(), text = r.getBoundingClientRect();
+        if (lines !== 1 || box.height !== h0 || text.right > box.right + 0.5) bad.push(`${o.textContent}: ${lines} lines, ${box.height}px tall, text ${text.width.toFixed(0)}px in ${box.width.toFixed(0)}px`);
+      }
+      return bad;
+    });
+    check(`hour readout fits on one line at ${width} px`, out.length === 0, out.join("; "));
+  }
   await tiny.close();
 
   // The page must not jump when the data arrives (Cumulative Layout Shift under 0.1, the "good" threshold)
