@@ -304,6 +304,24 @@ try {
     });
     check(`hour readout fits on one line at ${width} px`, out.length === 0, out.join("; "));
   }
+  // A browser minimum font size of 24 px (Firefox setting, low-vision users) enlarges the readout past its column;
+  // it must push the slider over, never sit on top of it. Simulated by forcing the size, as CI runs Chromium only.
+  const bigFont = await tiny.addStyleTag({ content: "#hour-out { font-size: 24px !important; }" });
+  for (const width of [1280, 640, 401]) {
+    await tiny.setViewportSize({ width, height: 900 });
+    const hit = await tiny.evaluate(() => {
+      const o = document.getElementById("hour-out"), s = document.getElementById("hour"), bad = [];
+      for (let v = 0; v <= +s.max; v++) {
+        s.value = v; s.dispatchEvent(new Event("input"));
+        const r = document.createRange(); r.selectNodeContents(o);
+        const text = r.getBoundingClientRect(), slider = s.getBoundingClientRect();
+        if (r.getClientRects().length !== 1 || text.right > slider.left) bad.push(`${o.textContent}: text ends ${text.right.toFixed(0)}, slider starts ${slider.left.toFixed(0)}`);
+      }
+      return bad;
+    });
+    check(`hour readout at a 24 px minimum font clears the slider at ${width} px`, hit.length === 0, hit.join("; "));
+  }
+  await bigFont.evaluate((el) => el.remove());
   await tiny.close();
 
   // The page must not jump when the data arrives (Cumulative Layout Shift under 0.1, the "good" threshold)
